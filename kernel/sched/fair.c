@@ -39,11 +39,13 @@
 
 #include "sched.h"
 #include "tune.h"
-#include "mlfq.h"
 #include "walt.h"
 
 #ifdef CONFIG_FUSE_SHORTCIRCUIT
 extern unsigned int ht_fuse_boost;
+#endif
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
+#include "mlfq.h"
 #endif
 
 #ifdef CONFIG_SMP
@@ -1384,15 +1386,23 @@ static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se);
  * A task that asked for its own request size through sched_setattr() has
  * custom_slice set and never reaches this, so MLFQ never overrides an explicit
  * request.
+ *
+ * This one stays defined when the classifier is not built, because it is not
+ * an extra step in the request path but the choice of where the request comes
+ * from: with the port compiled out there is only one answer, and it is the
+ * base slice every other entity takes.
  */
 static inline u64 mlfq_base_slice(struct sched_entity *se)
 {
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	if (sched_feat(MLFQ) && entity_is_task(se))
 		return mlfq_queue_slice(task_of(se)->mlfq.queue);
+#endif
 
 	return sysctl_sched_base_slice;
 }
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 /*
  * Account a stretch of running time to the burst gauge. Running is the only
  * evidence that pushes a task towards the batch queue, and the gauge
@@ -1613,6 +1623,7 @@ static bool mlfq_preempt_burst(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 	return true;
 }
+#endif /* CONFIG_SCHED_EEVDF_MLFQ */
 
 /*
  * XXX: strictly: vd_i += N*r_i/w_i such that: vd_i > ve_i
@@ -1623,6 +1634,7 @@ static void update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (vruntime_cmp(se->vruntime, "<", se->deadline))
 		return;
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	/*
 	 * Reaching the deadline without sleeping is the evidence the classifier
 	 * counts towards demotion, so reclassify before the next request is
@@ -1632,6 +1644,7 @@ static void update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	if (sched_feat(MLFQ) && entity_is_task(se))
 		mlfq_classify_runout(task_of(se),
 				     rq_clock_task(rq_of(cfs_rq)));
+#endif
 
 	/*
 	 * For EEVDF the virtual time slope is determined by w_i (iow.
@@ -1646,7 +1659,9 @@ static void update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	 * EEVDF: vd_i = ve_i + r_i / w_i
 	 */
 	se->deadline = se->vruntime + calc_delta_fair(se->slice, se);
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	mlfq_grant_request(cfs_rq, se, 0);
+#endif
 	avg_vruntime(cfs_rq);
 
 	/*
@@ -1794,7 +1809,9 @@ static void update_curr(struct cfs_rq *cfs_rq)
 	schedstat_add(cfs_rq->exec_clock, delta_exec);
 
 	curr->vruntime += calc_delta_fair(delta_exec, curr);
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	mlfq_account_runtime(curr, delta_exec);
+#endif
 	update_deadline(cfs_rq, curr);
 
 	if (entity_is_task(curr)) {
@@ -5121,6 +5138,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 */
 	se->deadline = se->vruntime + vslice;
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	/*
 	 * The wakeup that has to preempt takes the shortened request instead of
 	 * a reclaimed one, which is how scx_mlfq splits the two: its preemption
@@ -5130,6 +5148,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 */
 	if (!mlfq_preempt_burst(cfs_rq, se))
 		mlfq_grant_request(cfs_rq, se, flags);
+#endif
 }
 
 static void check_enqueue_throttle(struct cfs_rq *cfs_rq);
@@ -5401,7 +5420,9 @@ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, bool first)
 	}
 
 	se->prev_sum_exec_runtime = se->sum_exec_runtime;
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	mlfq_account_running(se, first);
+#endif
 }
 
 static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags);
@@ -5449,12 +5470,14 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 	if (prev->on_rq)
 		update_curr(cfs_rq);
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	/*
 	 * The task stops here, and if it is not runnable it stops for a sleep,
 	 * which is what its level reclaims the rest of its request from. It goes
 	 * after the accounting above because that is what it measures against.
 	 */
 	mlfq_donate_slack(cfs_rq, prev);
+#endif
 
 	/* throttle cfs_rqs exceeding runtime */
 	check_cfs_rq_runtime(cfs_rq);
@@ -6624,6 +6647,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		return;
 	}
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	/*
 	 * Reclassify before placement, so that the place_entity() reached from
 	 * either path below sizes the request from the queue this picks.
@@ -6644,6 +6668,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 				      flags & (ENQUEUE_WAKEUP | ENQUEUE_DELAYED));
 		mlfq_runnable_enter(cpu_of(rq), &p->mlfq);
 	}
+#endif
 
 	if (flags & ENQUEUE_DELAYED) {
 		requeue_delayed_entity(se);
@@ -6779,6 +6804,7 @@ static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags)
 			h_nr_runnable = 1;
 	}
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	/*
 	 * Timestamp the block, so the wakeup can measure how long the task
 	 * slept: that length is what the burst gauge is refunded against, and
@@ -6801,6 +6827,7 @@ static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags)
 		 */
 		mlfq_runnable_exit(cpu_of(rq), &p->mlfq);
 	}
+#endif
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
@@ -13760,6 +13787,7 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
 {
 	SCHED_WARN_ON(p->se.sched_delayed);
 
+#ifdef CONFIG_SCHED_EEVDF_MLFQ
 	/*
 	 * Whatever the task did under its previous policy says nothing about
 	 * how it will behave under this one, so it starts over in the default
@@ -13767,6 +13795,7 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
 	 * ran when a task came under its control.
 	 */
 	mlfq_reset_classification(&p->mlfq);
+#endif
 
 	attach_task_cfs_rq(p);
 
