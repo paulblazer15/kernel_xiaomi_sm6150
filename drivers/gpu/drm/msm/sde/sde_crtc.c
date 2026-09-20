@@ -3042,8 +3042,10 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 					| SDE_ENCODER_FRAME_EVENT_PANEL_DEAD
 					| SDE_ENCODER_FRAME_EVENT_DONE))) {
 
-		ret = pm_runtime_resume(crtc->dev->dev);
+		/* Balance the runtime PM reference released after reading UBWC status. */
+		ret = pm_runtime_get_sync(crtc->dev->dev);
 		if (ret < 0) {
+			pm_runtime_put_noidle(crtc->dev->dev);
 			SDE_ERROR("failed to enable power resource %d\n", ret);
 			SDE_EVT32(ret, SDE_EVTLOG_ERROR);
 		} else {
