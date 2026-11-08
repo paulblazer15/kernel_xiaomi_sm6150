@@ -87,7 +87,7 @@
 #endif
 /* Account to memcg */
 #ifdef CONFIG_MEMCG_KMEM
-# define SLAB_ACCOUNT		((slab_flags_t __force)0x04000000U)
+# define SLAB_ACCOUNT		0x04000000UL
 #else
 # define SLAB_ACCOUNT		0x00000000UL
 #endif
