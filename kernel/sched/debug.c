@@ -19,6 +19,7 @@
 #include <linux/mempolicy.h>
 #include <linux/debugfs.h>
 #include <linux/log2.h>
+#include <linux/nmi.h>
 #include "sched.h"
 
 static DEFINE_SPINLOCK(sched_debug_lock);
@@ -385,6 +386,12 @@ static char *task_group_path(struct task_group *tg)
 static void
 print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 {
+	struct cfs_rq *cfs_rq = &rq->cfs;
+
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	cfs_rq = p->se.cfs_rq;
+#endif
+
 	if (rq->curr == p)
 		SEQ_printf(m, ">R");
 	else
@@ -393,7 +400,7 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 	SEQ_printf(m, "%15s %5d %9Ld.%06ld %c %9Ld.%06ld %c %9Ld.%06ld %9Ld.%06ld %9Ld %5d ",
 		p->comm, task_pid_nr(p),
 		SPLIT_NS(p->se.vruntime),
-		entity_eligible(cfs_rq_of(&p->se), &p->se) ? 'E' : 'N',
+		entity_eligible(cfs_rq, &p->se) ? 'E' : 'N',
 		SPLIT_NS(p->se.deadline),
 		p->se.custom_slice ? 'S' : ' ',
 		SPLIT_NS(p->se.slice),
@@ -466,7 +473,7 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 	last = __pick_last_entity(cfs_rq);
 	if (last)
 		right_vruntime = last->vruntime;
-	min_vruntime = cfs_rq->min_vruntime;
+	zero_vruntime = cfs_rq->zero_vruntime;
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 	sum_w_vruntime = cfs_rq->sum_w_vruntime;
 	avruntime = avg_vruntime(cfs_rq);
@@ -967,7 +974,8 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 	P(se.avg.runnable_load_avg);
 	P(se.avg.util_avg);
 	P(se.avg.last_update_time);
-	PM(se.avg.util_est, ~UTIL_AVG_UNCHANGED);
+	SEQ_printf(m, "%-45s:%21u\n", "se.avg.util_est",
+		   READ_ONCE(p->se.avg.util_est) & ~UTIL_AVG_UNCHANGED);
 #endif
 	P(policy);
 	P(prio);

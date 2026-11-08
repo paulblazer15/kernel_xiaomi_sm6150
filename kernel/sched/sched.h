@@ -3555,7 +3555,6 @@ static inline void restore_cgroup_boost_settings(void) { }
 #endif
 
 extern int alloc_related_thread_groups(void);
-extern int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se);
 
 extern unsigned long all_cluster_ids[];
 
@@ -3800,5 +3799,6 @@ static inline void sched_irq_work_queue(struct irq_work *work)
 }
 #endif
 
+extern int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se);
 extern u64 avg_vruntime(struct cfs_rq *cfs_rq);
 extern bool dequeue_task(struct rq *rq, struct task_struct *p, int flags);
