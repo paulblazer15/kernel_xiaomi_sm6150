@@ -6,6 +6,28 @@ config KERNELVERSION
 	string
 	option env="KERNELVERSION"
 
+# Hidden environment inputs keep toolchain markers tied to the actual build.
+config TOOLCHAIN_CC_NAME
+	string
+	option env="KCONFIG_CC_NAME"
+
+config TOOLCHAIN_LD_IS_LLD
+	string
+	option env="KCONFIG_LD_IS_LLD"
+
+config TOOLCHAIN_LLVM_IAS
+	string
+	option env="KCONFIG_LLVM_IAS"
+
+config CC_IS_CLANG
+	def_bool TOOLCHAIN_CC_NAME = "clang"
+
+config LD_IS_LLD
+	def_bool TOOLCHAIN_LD_IS_LLD = "y"
+
+config AS_IS_LLVM
+	def_bool CC_IS_CLANG && TOOLCHAIN_LLVM_IAS = "y"
+
 config DEFCONFIG_LIST
 	string
 	depends on !UML
