@@ -204,7 +204,7 @@ sd_alloc_ctl_domain_table(struct sched_domain *sd)
 	sg = sd->groups;
 	if (sg->sge) {
 		char buf[32];
-		struct ctl_table *entry = &table[13];
+		struct ctl_table *entry = &table[8];
 
 		do {
 			snprintf(buf, 32, "group%d", i);
