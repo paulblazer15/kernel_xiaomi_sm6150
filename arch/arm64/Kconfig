@@ -1269,6 +1269,7 @@ config ARM64_MODULE_PLTS
 
 config RELOCATABLE
 	bool
+	select MODULE_REL_CRCS if MODVERSIONS
 	select ARCH_HAS_RELR
 	help
 	  This builds the kernel as a Position Independent Executable (PIE),
